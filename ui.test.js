@@ -130,9 +130,10 @@ function makeEl(tag) {
   return el;
 }
 
-function makeSandbox(storedJson) {
+function makeSandbox(storedJson, libraryJson) {
   const store = {};
   if (storedJson !== undefined) store.printCostCalculator = storedJson;
+  if (libraryJson !== undefined) store.printCostLibrary = libraryJson;
   const byId = {};
   const document = {
     documentElement: makeEl('html'),
@@ -144,7 +145,7 @@ function makeSandbox(storedJson) {
     setItem(k, v) { store[k] = String(v); }
   };
   const window = { matchMedia: () => ({ matches: false }) };
-  const sandbox = { document, localStorage, window, Calc: require('./calc.js'), console };
+  const sandbox = { document, localStorage, window, Calc: require('./calc.js'), console, setTimeout: () => 0 };
   sandbox.store = store;
   sandbox.byId = byId;
   return sandbox;
@@ -338,4 +339,185 @@ test('runtime: typing a sale price sets revenue, profit and persists', () => {
   assert.strictEqual(sb.byId['bd-revenue'].textContent, '£12.50');
   assert.strictEqual(sb.byId['profit'].textContent, '£12.50');
   assert.strictEqual(sb.byId['margin'].textContent, '100.0%');
+});
+
+/* ---------- Library: reusable parts and filament presets ---------- */
+
+test('library markup, pickers and storage key are present', () => {
+  assert.ok(html.includes("'printCostLibrary'"), 'expected dedicated library storage key');
+  for (const id of ['add-saved-part', 'library-empty', 'library-parts', 'library-filaments']) {
+    assert.ok(html.includes('id="' + id + '"'), 'missing element id ' + id);
+  }
+  assert.ok(html.includes('Add saved part…'));
+  assert.ok(html.includes('Add saved filament…'));
+});
+
+function libOf(sb) {
+  return JSON.parse(sb.store.printCostLibrary);
+}
+
+// One named print with one filament row, no sale price.
+const seededOrder = {
+  v: 3,
+  currency: '£',
+  salePrice: '',
+  settings: { printer: 'Custom', watts: '', kwhRegion: 'uk', kwhPrice: '0.2611', wage: '' },
+  prints: [{
+    name: 'Dragon — large', qty: '2', hours: '3', labourMinutes: '15',
+    rows: [{ color: '#2274A5', name: 'PLA Galaxy Black', spoolPrice: '20', spoolWeight: '1000', gramsUsed: '80' }]
+  }],
+  postage: { service: 'none', price: '0', packaging: '' }
+};
+
+const seededLibrary = {
+  v: 1,
+  parts: [{
+    name: 'Dragon — large', hours: '3', labourMinutes: '15',
+    rows: [{ color: '#2274A5', name: 'PLA Galaxy Black', spoolPrice: '20', spoolWeight: '1000', gramsUsed: '80' }]
+  }],
+  filaments: [{ color: '#7A4EAB', name: 'PETG Purple', spoolPrice: '30', spoolWeight: '500' }]
+};
+
+/* Card child order: head(0) gridA(1) gridB(2) rowsHead(3) rowsWrap(4) addRow(5) filSel(6) foot(7).
+   Head child order: title(0) save(1) remove(2).
+   Filament row child order: swatch(0) name(1) price(2) weight(3) used(4) save(5) remove(6). */
+
+test('runtime: Save on a print card stores the part in the library', () => {
+  const sb = makeSandbox(JSON.stringify(seededOrder));
+  runScripts(sb);
+  const card = sb.byId['prints'].children[0];
+  card.children[0].children[1].fire('click');
+  const lib = libOf(sb);
+  assert.strictEqual(lib.v, 1);
+  assert.strictEqual(lib.parts.length, 1);
+  const part = lib.parts[0];
+  assert.strictEqual(part.name, 'Dragon — large');
+  assert.strictEqual(part.hours, '3');
+  assert.strictEqual(part.labourMinutes, '15');
+  assert.strictEqual(part.rows.length, 1);
+  assert.strictEqual(part.rows[0].gramsUsed, '80');
+  assert.ok(!('qty' in part), 'a saved part carries no order quantity');
+  assert.strictEqual(sb.byId['library-parts'].children.length, 1);
+  assert.strictEqual(sb.byId['add-saved-part'].hidden, false);
+  assert.strictEqual(sb.byId['library-empty'].hidden, true);
+});
+
+test('runtime: saving the same part name twice updates it in place', () => {
+  const sb = makeSandbox(JSON.stringify(seededOrder));
+  runScripts(sb);
+  const card = sb.byId['prints'].children[0];
+  card.children[0].children[1].fire('click');
+  const hoursIn = card.children[2].children[0].children[1];
+  hoursIn.value = '5';
+  hoursIn.fire('input');
+  card.children[0].children[1].fire('click');
+  const lib = libOf(sb);
+  assert.strictEqual(lib.parts.length, 1);
+  assert.strictEqual(lib.parts[0].hours, '5');
+});
+
+test('runtime: ☆ on a filament row saves a spool preset without grams used', () => {
+  const sb = makeSandbox(JSON.stringify(seededOrder));
+  runScripts(sb);
+  const rowEl = sb.byId['prints'].children[0].children[4].children[0];
+  rowEl.children[5].fire('click');
+  const lib = libOf(sb);
+  assert.strictEqual(lib.filaments.length, 1);
+  const f = lib.filaments[0];
+  assert.strictEqual(f.name, 'PLA Galaxy Black');
+  assert.strictEqual(f.color, '#2274A5');
+  assert.strictEqual(f.spoolPrice, '20');
+  assert.strictEqual(f.spoolWeight, '1000');
+  assert.ok(!('gramsUsed' in f), 'spool presets must not remember grams used');
+  assert.strictEqual(sb.byId['library-filaments'].children.length, 1);
+});
+
+test('runtime: add-saved-part picker appends independent copies of the part', () => {
+  const sb = makeSandbox(undefined, JSON.stringify(seededLibrary));
+  runScripts(sb);
+  const sel = sb.byId['add-saved-part'];
+  assert.strictEqual(sel.hidden, false);
+  sel.value = 'Dragon — large';
+  sel.fire('change');
+  sel.value = 'Dragon — large';
+  sel.fire('change');
+  let saved = JSON.parse(sb.store.printCostCalculator);
+  assert.strictEqual(saved.prints.length, 3);
+  const added = saved.prints[1];
+  assert.strictEqual(added.name, 'Dragon — large');
+  assert.strictEqual(added.qty, '1');
+  assert.strictEqual(added.hours, '3');
+  assert.strictEqual(added.rows[0].gramsUsed, '80');
+  assert.strictEqual(sel.value, '', 'picker resets to its placeholder');
+  // Editing one added copy must not bleed into the other (no aliasing).
+  const rowEl = sb.byId['prints'].children[1].children[4].children[0];
+  const priceIn = rowEl.children[2].children[1];
+  priceIn.value = '99';
+  priceIn.fire('input');
+  saved = JSON.parse(sb.store.printCostCalculator);
+  assert.strictEqual(saved.prints[1].rows[0].spoolPrice, '99');
+  assert.strictEqual(saved.prints[2].rows[0].spoolPrice, '20');
+});
+
+test('runtime: per-card saved-filament picker appends a row with empty grams', () => {
+  const sb = makeSandbox(undefined, JSON.stringify(seededLibrary));
+  runScripts(sb);
+  const filSel = sb.byId['prints'].children[0].children[6];
+  assert.strictEqual(filSel.hidden, false);
+  filSel.value = 'PETG Purple';
+  filSel.fire('change');
+  const saved = JSON.parse(sb.store.printCostCalculator);
+  assert.strictEqual(saved.prints[0].rows.length, 2);
+  const row = saved.prints[0].rows[1];
+  assert.strictEqual(row.name, 'PETG Purple');
+  assert.strictEqual(row.color, '#7A4EAB');
+  assert.strictEqual(row.spoolPrice, '30');
+  assert.strictEqual(row.spoolWeight, '500');
+  assert.strictEqual(row.gramsUsed, '');
+});
+
+test('runtime: library delete buttons remove presets and hide pickers', () => {
+  const sb = makeSandbox(undefined, JSON.stringify(seededLibrary));
+  runScripts(sb);
+  const partLi = sb.byId['library-parts'].children[0];
+  partLi.children[partLi.children.length - 1].fire('click');
+  const filLi = sb.byId['library-filaments'].children[0];
+  filLi.children[filLi.children.length - 1].fire('click');
+  const lib = libOf(sb);
+  assert.strictEqual(lib.parts.length, 0);
+  assert.strictEqual(lib.filaments.length, 0);
+  assert.strictEqual(sb.byId['add-saved-part'].hidden, true);
+  assert.strictEqual(sb.byId['library-empty'].hidden, false);
+  assert.strictEqual(sb.byId['prints'].children[0].children[6].hidden, true);
+});
+
+test('runtime: invalid stored colours fall back to the default swatch', () => {
+  const lib = {
+    v: 1,
+    parts: [],
+    filaments: [{ color: 'url(javascript:x)', name: 'Weird', spoolPrice: '1', spoolWeight: '1000' }]
+  };
+  const sb = makeSandbox(undefined, JSON.stringify(lib));
+  runScripts(sb);
+  const li = sb.byId['library-filaments'].children[0];
+  assert.strictEqual(li.children[0].style.backgroundColor, '#E8500F');
+});
+
+test('runtime: library lists are capped at 200 entries on load', () => {
+  const filaments = [];
+  for (let i = 0; i < 250; i++) {
+    filaments.push({ color: '#2274A5', name: 'F' + i, spoolPrice: '1', spoolWeight: '1000' });
+  }
+  const sb = makeSandbox(undefined, JSON.stringify({ v: 1, parts: [], filaments }));
+  runScripts(sb);
+  assert.strictEqual(sb.byId['library-filaments'].children.length, 200);
+});
+
+test('runtime: corrupt library storage falls back to an empty library', () => {
+  const sb = makeSandbox(undefined, '{not valid json');
+  runScripts(sb);
+  assert.strictEqual(sb.byId['add-saved-part'].hidden, true);
+  assert.strictEqual(sb.byId['library-empty'].hidden, false);
+  assert.strictEqual(sb.byId['library-parts'].children.length, 0);
+  assert.strictEqual(sb.byId['library-filaments'].children.length, 0);
 });

@@ -282,7 +282,7 @@
   /* ---------- Filament rows ---------- */
   .rows-head, .filament-row {
     display: grid;
-    grid-template-columns: 34px minmax(90px, 1.6fr) 1fr 1fr 1fr 28px;
+    grid-template-columns: 34px minmax(90px, 1.6fr) 1fr 1fr 1fr 28px 28px;
     gap: 8px;
     align-items: center;
   }
@@ -313,6 +313,39 @@
     flex-shrink: 0;
   }
   .remove-btn:hover { color: var(--loss); }
+
+  .row-save-btn {
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1;
+    color: var(--muted);
+    background: none;
+    border: none;
+    border-radius: 4px;
+    width: 28px;
+    height: 28px;
+    cursor: pointer;
+    justify-self: center;
+    flex-shrink: 0;
+  }
+  .row-save-btn:hover { color: var(--accent); }
+
+  .save-btn {
+    flex-shrink: 0;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 8px;
+    cursor: pointer;
+  }
+  .save-btn:hover { color: var(--accent); border-color: var(--accent); }
+  .print-card-head .print-title { flex: 1 1 auto; min-width: 0; }
 
   .add-btn {
     display: block;
@@ -437,14 +470,47 @@
   .margin-line { color: var(--muted); font-size: 13px; margin-top: 4px; }
   .margin-line .v { font-family: var(--font-mono); font-weight: 500; color: var(--ink); }
 
+  /* ---------- Library ---------- */
+  .lib-select { margin-top: 12px; }
+  .lib-sub {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 12px 0 4px;
+  }
+  .lib-list { list-style: none; }
+  .lib-list li {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 0;
+    font-size: 13px;
+  }
+  .lib-list .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 1px solid var(--hairline);
+  }
+  .lib-list .name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   /* ---------- Narrow screens: rows collapse to two lines ---------- */
   @media (max-width: 560px) {
     .rows-head { display: none; }
     .filament-row {
-      grid-template-columns: 34px repeat(6, minmax(0, 1fr)) 28px;
+      grid-template-columns: 34px repeat(6, minmax(0, 1fr)) 28px 28px;
       grid-template-areas:
-        "swatch name  name  name   name   name   name remove"
-        "price  price price weight weight weight used used";
+        "swatch name  name  name   name   name   name save remove"
+        "price  price price weight weight weight used used  used";
       align-items: end;
       row-gap: 8px;
       padding-bottom: 12px;
@@ -457,6 +523,7 @@
     .filament-row .f-price  { grid-area: price; }
     .filament-row .f-weight { grid-area: weight; }
     .filament-row .f-used   { grid-area: used; }
+    .filament-row .f-save   { grid-area: save; }
     .filament-row .f-remove { grid-area: remove; }
     .row-field .mini-label {
       display: block;
@@ -497,6 +564,7 @@
       <h2 class="section-label" id="prints-label">Prints</h2>
       <div id="prints"></div>
       <button type="button" class="add-btn solid" id="add-print">Add print</button>
+      <select id="add-saved-part" class="lib-select" aria-label="Add saved part" hidden></select>
     </section>
 
     <div class="stack">
@@ -600,6 +668,20 @@
         <p class="margin-line" id="margin-line">Margin vs revenue <span class="v" id="margin">&mdash;</span></p>
         <p class="margin-line" id="no-sale-hint" hidden>Set a sale price to see profit</p>
       </section>
+
+      <section class="panel" aria-labelledby="library-label">
+        <h2 class="section-label" id="library-label">Library</h2>
+        <p class="hint" id="library-empty">Use Save on a print or &#9734; on a filament row to keep it here for next time.</p>
+        <div id="library-parts-wrap" hidden>
+          <h3 class="lib-sub">Parts</h3>
+          <ul class="lib-list" id="library-parts"></ul>
+        </div>
+        <div id="library-filaments-wrap" hidden>
+          <h3 class="lib-sub">Filaments</h3>
+          <ul class="lib-list" id="library-filaments"></ul>
+        </div>
+        <p class="footnote">Saved in this browser only &mdash; nothing leaves your device.</p>
+      </section>
     </div>
   </div>
 </div>
@@ -610,6 +692,7 @@
   'use strict';
 
   var STORAGE_KEY = 'printCostCalculator';
+  var LIB_KEY = 'printCostLibrary';
   var CUSTOM = 'Custom';
   var CUSTOM_ID = 'custom';
   var SERVICE_NONE_ID = 'none';
@@ -662,6 +745,12 @@
   var postagePriceEl = document.getElementById('postage-price');
   var packagingEl = document.getElementById('packaging');
   var themeBtn = document.getElementById('theme-toggle');
+  var addSavedPartSel = document.getElementById('add-saved-part');
+  var libEmptyEl = document.getElementById('library-empty');
+  var libPartsWrap = document.getElementById('library-parts-wrap');
+  var libFilamentsWrap = document.getElementById('library-filaments-wrap');
+  var libPartsEl = document.getElementById('library-parts');
+  var libFilamentsEl = document.getElementById('library-filaments');
   var barEl = document.getElementById('bar');
   var legendEl = document.getElementById('legend');
   var profitEl = document.getElementById('profit');
@@ -703,6 +792,10 @@
 
   function str(v, d) { return typeof v === 'string' ? v : d; }
 
+  var HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+
+  function colorStr(v, d) { return (typeof v === 'string' && HEX_COLOR.test(v)) ? v : d; }
+
   // Number coercion for migration: mirrors calc.js toNumber ('' -> NaN).
   function migNum(v) {
     if (typeof v === 'number') return isFinite(v) ? v : NaN;
@@ -722,7 +815,7 @@
   function sanitizeRow(r) {
     r = (r && typeof r === 'object') ? r : {};
     return {
-      color: str(r.color, '#E8500F'),
+      color: colorStr(r.color, '#E8500F'),
       name: str(r.name, ''),
       spoolPrice: str(r.spoolPrice, ''),
       spoolWeight: str(r.spoolWeight, '1000'),
@@ -828,6 +921,84 @@
     } catch (e) { /* storage unavailable; keep working without persistence */ }
   }
 
+  /* ---------- Library: reusable parts and filament presets ---------- */
+
+  function sanitizeFilamentPreset(f) {
+    f = (f && typeof f === 'object') ? f : {};
+    return {
+      color: colorStr(f.color, '#E8500F'),
+      name: str(f.name, ''),
+      spoolPrice: str(f.spoolPrice, ''),
+      spoolWeight: str(f.spoolWeight, '1000')
+    };
+  }
+
+  function sanitizePartPreset(p) {
+    p = (p && typeof p === 'object') ? p : {};
+    return {
+      name: str(p.name, ''),
+      hours: str(p.hours, ''),
+      labourMinutes: str(p.labourMinutes, ''),
+      rows: sanitizeRows(p.rows)
+    };
+  }
+
+  function named(x) { return x.name !== ''; }
+
+  function loadLibrary() {
+    var lib = { v: 1, parts: [], filaments: [] };
+    var raw;
+    try {
+      raw = localStorage.getItem(LIB_KEY);
+    } catch (e) {
+      return lib;
+    }
+    if (!raw) return lib;
+    var s;
+    try {
+      s = JSON.parse(raw);
+    } catch (e) {
+      return lib;
+    }
+    if (!s || typeof s !== 'object' || s.v !== 1) return lib;
+    // Cap list sizes so a bloated store can't stall the page on load.
+    if (Array.isArray(s.parts)) lib.parts = s.parts.slice(0, 200).map(sanitizePartPreset).filter(named);
+    if (Array.isArray(s.filaments)) lib.filaments = s.filaments.slice(0, 200).map(sanitizeFilamentPreset).filter(named);
+    return lib;
+  }
+
+  var library = loadLibrary();
+
+  function saveLibrary() {
+    try {
+      localStorage.setItem(LIB_KEY, JSON.stringify(library));
+    } catch (e) { /* storage unavailable; keep working without persistence */ }
+  }
+
+  function upsertByName(list, item) {
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].name === item.name) { list[i] = item; return; }
+    }
+    list.push(item);
+  }
+
+  function findByName(list, name) {
+    return list.filter(function (x) { return x.name === name; })[0] || null;
+  }
+
+  function partToPrint(part) {
+    return { name: part.name, qty: '1', hours: part.hours, labourMinutes: part.labourMinutes, rows: part.rows.map(sanitizeRow) };
+  }
+
+  function presetToRow(f) {
+    return { color: f.color, name: f.name, spoolPrice: f.spoolPrice, spoolWeight: f.spoolWeight, gramsUsed: '' };
+  }
+
+  function flashSaved(btn, savedText, restoreText) {
+    btn.textContent = savedText;
+    setTimeout(function () { btn.textContent = restoreText; }, 1200);
+  }
+
   /* ---------- Calc adapters (calc.js expects printHours) ---------- */
 
   function toCalcPrint(p) {
@@ -907,6 +1078,68 @@
     return list.map(function (x) { return { value: x.id, label: x.label }; });
   }
 
+  /* ---------- Library panel ---------- */
+
+  function libItem(listEl, color, name, onDelete) {
+    var li = document.createElement('li');
+    if (color) {
+      var dot = document.createElement('span');
+      dot.className = 'dot';
+      dot.style.backgroundColor = color;
+      li.appendChild(dot);
+    }
+    var nm = document.createElement('span');
+    nm.className = 'name';
+    nm.textContent = name;
+    var del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'remove-btn';
+    del.textContent = '×';
+    del.setAttribute('aria-label', 'Remove ' + name + ' from library');
+    del.addEventListener('click', onDelete);
+    li.appendChild(nm);
+    li.appendChild(del);
+    listEl.appendChild(li);
+  }
+
+  function refreshSavedFilamentSelect(sel) {
+    fillSelect(sel, [{ value: '', label: 'Add saved filament…' }].concat(
+      library.filaments.map(function (f) { return { value: f.name, label: f.name }; })));
+    sel.value = '';
+    sel.hidden = library.filaments.length === 0;
+  }
+
+  function renderLibrary() {
+    libPartsEl.textContent = '';
+    libFilamentsEl.textContent = '';
+    library.parts.forEach(function (part, i) {
+      libItem(libPartsEl, (part.rows[0] && part.rows[0].color) || null, part.name, function () {
+        library.parts.splice(i, 1);
+        saveLibrary();
+        renderLibrary();
+      });
+    });
+    library.filaments.forEach(function (f, i) {
+      libItem(libFilamentsEl, f.color, f.name, function () {
+        library.filaments.splice(i, 1);
+        saveLibrary();
+        renderLibrary();
+      });
+    });
+    libPartsWrap.hidden = library.parts.length === 0;
+    libFilamentsWrap.hidden = library.filaments.length === 0;
+    libEmptyEl.hidden = library.parts.length > 0 || library.filaments.length > 0;
+
+    fillSelect(addSavedPartSel, [{ value: '', label: 'Add saved part…' }].concat(
+      library.parts.map(function (p) { return { value: p.name, label: p.name }; })));
+    addSavedPartSel.value = '';
+    addSavedPartSel.hidden = library.parts.length === 0;
+
+    cardRefs.forEach(function (refs) {
+      if (refs.filSel) refreshSavedFilamentSelect(refs.filSel);
+    });
+  }
+
   /* ---------- Prints panel ---------- */
 
   function renderFilamentRows(container, print, cardIndex) {
@@ -928,6 +1161,23 @@
       weight.addEventListener('input', function () { row.spoolWeight = weight.value; update(); });
       used.addEventListener('input', function () { row.gramsUsed = used.value; update(); });
 
+      var save = document.createElement('button');
+      save.type = 'button';
+      save.className = 'row-save-btn f-save';
+      save.textContent = '☆';
+      save.setAttribute('aria-label', 'Save filament ' + (i + 1) + ' of print ' + (cardIndex + 1) + ' to library');
+      save.addEventListener('click', function () {
+        upsertByName(library.filaments, {
+          color: color.value || '#E8500F',
+          name: name.value || 'Filament',
+          spoolPrice: price.value,
+          spoolWeight: weight.value
+        });
+        saveLibrary();
+        renderLibrary();
+        flashSaved(save, '★', '☆');
+      });
+
       var remove = document.createElement('button');
       remove.type = 'button';
       remove.className = 'remove-btn f-remove';
@@ -945,6 +1195,7 @@
       rowEl.appendChild(field('f-price', 'Spool price', price));
       rowEl.appendChild(field('f-weight', 'Spool wt (g)', weight));
       rowEl.appendChild(field('f-used', 'Used (g)', used));
+      rowEl.appendChild(save);
       rowEl.appendChild(remove);
       container.appendChild(rowEl);
     });
@@ -965,6 +1216,22 @@
       var title = document.createElement('span');
       title.className = 'print-title';
       title.textContent = print.name || 'Print ' + (pi + 1);
+      var savePart = document.createElement('button');
+      savePart.type = 'button';
+      savePart.className = 'save-btn';
+      savePart.textContent = 'Save';
+      savePart.setAttribute('aria-label', 'Save print ' + (pi + 1) + ' to library');
+      savePart.addEventListener('click', function () {
+        upsertByName(library.parts, {
+          name: print.name || 'Print ' + (pi + 1),
+          hours: print.hours,
+          labourMinutes: print.labourMinutes,
+          rows: print.rows.map(sanitizeRow)
+        });
+        saveLibrary();
+        renderLibrary();
+        flashSaved(savePart, 'Saved ✓', 'Save');
+      });
       var remove = document.createElement('button');
       remove.type = 'button';
       remove.className = 'remove-btn';
@@ -977,6 +1244,7 @@
         update();
       });
       head.appendChild(title);
+      head.appendChild(savePart);
       head.appendChild(remove);
       card.appendChild(head);
 
@@ -1010,7 +1278,7 @@
       var rowsHead = document.createElement('div');
       rowsHead.className = 'rows-head';
       rowsHead.setAttribute('aria-hidden', 'true');
-      ['', 'Filament', 'Spool price', 'Spool wt (g)', 'Used (g)', ''].forEach(function (t) {
+      ['', 'Filament', 'Spool price', 'Spool wt (g)', 'Used (g)', '', ''].forEach(function (t) {
         var span = document.createElement('span');
         span.textContent = t;
         rowsHead.appendChild(span);
@@ -1038,6 +1306,20 @@
       });
       card.appendChild(addRow);
 
+      var filSel = document.createElement('select');
+      filSel.id = id + '-saved-filament';
+      filSel.className = 'lib-select';
+      filSel.setAttribute('aria-label', 'Add saved filament to print ' + (pi + 1));
+      refreshSavedFilamentSelect(filSel);
+      filSel.addEventListener('change', function () {
+        var preset = findByName(library.filaments, filSel.value);
+        if (!preset) return;
+        print.rows.push(presetToRow(preset));
+        renderPrints();
+        update();
+      });
+      card.appendChild(filSel);
+
       // Footer
       var foot = document.createElement('div');
       foot.className = 'card-foot';
@@ -1063,7 +1345,7 @@
       foot.appendChild(subLine);
       card.appendChild(foot);
 
-      cardRefs.push({ unit: unitV, sub: subV, subLabel: subK });
+      cardRefs.push({ unit: unitV, sub: subV, subLabel: subK, filSel: filSel });
       printsEl.appendChild(card);
     });
   }
@@ -1309,6 +1591,15 @@
     }
   });
 
+  addSavedPartSel.addEventListener('change', function () {
+    var part = findByName(library.parts, addSavedPartSel.value);
+    if (!part) return;
+    state.prints.push(partToPrint(part));
+    renderPrints();
+    update();
+    addSavedPartSel.value = '';
+  });
+
   /* ---------- Theme ---------- */
 
   var root = document.documentElement;
@@ -1340,6 +1631,7 @@
   packagingEl.value = state.postage.packaging;
   updatePostageHint();
   renderPrints();
+  renderLibrary();
   update();
 })();
 </script>
