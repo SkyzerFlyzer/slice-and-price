@@ -1,0 +1,1347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Print cost calculator</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<script>
+(function () {
+  var theme = null;
+  try {
+    var s = JSON.parse(localStorage.getItem('printCostCalculator'));
+    if (s && (s.theme === 'dark' || s.theme === 'light')) theme = s.theme;
+  } catch (e) { /* ignore */ }
+  if (!theme) {
+    theme = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+  }
+  document.documentElement.setAttribute('data-theme', theme);
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bed: #F6F7F4;
+    --grid: #E3E6DF;
+    --grid-major: rgba(107, 118, 113, 0.22);
+    --ink: #1E2528;
+    --muted: #6B7671;
+    --accent: #E8500F;
+    --card: #FFFFFF;
+    --border: #D8DCD5;
+    --profit: #1F7A4D;
+    --loss: #B3341E;
+    --hairline: rgba(30, 37, 40, 0.25);
+    --shadow: 0 1px 2px rgba(30, 37, 40, 0.06);
+    --placeholder: #A9B2AC;
+    --seg-elec: #7C8B94;
+    --seg-labour: #A08D6B;
+    --seg-post: #8B7C94;
+    --font-display: "Chakra Petch", "Trebuchet MS", sans-serif;
+    --font-body: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+    --font-mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    color-scheme: light;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bed: #14181A;
+      --grid: #212829;
+      --grid-major: rgba(147, 160, 154, 0.16);
+      --card: #1B2124;
+      --border: #2E3639;
+      --ink: #E8ECEA;
+      --muted: #93A09A;
+      --accent: #E8500F;
+      --profit: #2FA36B;
+      --loss: #E06550;
+      --hairline: rgba(232, 236, 234, 0.22);
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+      --placeholder: #5F6D68;
+      --seg-elec: #7C9DB1;
+      --seg-labour: #54707F;
+      --seg-post: #394F5C;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bed: #14181A;
+    --grid: #212829;
+    --grid-major: rgba(147, 160, 154, 0.16);
+    --card: #1B2124;
+    --border: #2E3639;
+    --ink: #E8ECEA;
+    --muted: #93A09A;
+    --accent: #E8500F;
+    --profit: #2FA36B;
+    --loss: #E06550;
+    --hairline: rgba(232, 236, 234, 0.22);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --placeholder: #5F6D68;
+    --seg-elec: #8A99A2;
+    --seg-labour: #AE9B79;
+    --seg-post: #998AA2;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  /* The hidden attribute must win over class display values (e.g. flex). */
+  [hidden] { display: none !important; }
+
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    font-family: var(--font-body);
+    font-size: 15px;
+    color: var(--ink);
+    background-color: var(--bed);
+    background-image:
+      linear-gradient(to right, var(--grid) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--grid) 1px, transparent 1px),
+      linear-gradient(to right, var(--grid-major) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--grid-major) 1px, transparent 1px);
+    background-size: 24px 24px, 24px 24px, 120px 120px, 120px 120px;
+    min-height: 100vh;
+    padding: 32px 16px 64px;
+  }
+
+  .wrap { max-width: 960px; margin: 0 auto; }
+
+  /* ---------- Header ---------- */
+  .header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .eyebrow {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  h1 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(28px, 4vw, 40px);
+    line-height: 1.1;
+    margin: 6px 0 8px;
+  }
+  .sub { color: var(--muted); margin-bottom: 28px; }
+
+  .theme-btn {
+    flex-shrink: 0;
+    width: 34px;
+    height: 34px;
+    margin-top: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-display);
+    color: var(--ink);
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .theme-btn:hover { color: var(--accent); }
+  .theme-btn svg { width: 16px; height: 16px; display: block; }
+  .theme-btn .icon-sun { display: none; }
+  :root[data-theme="dark"] .theme-btn .icon-sun { display: block; }
+  :root[data-theme="dark"] .theme-btn .icon-moon { display: none; }
+
+  /* ---------- Layout ---------- */
+  .cols { display: grid; grid-template-columns: 1fr; gap: 16px; align-items: start; }
+  @media (min-width: 800px) {
+    .cols { grid-template-columns: 3fr 2fr; }
+  }
+  .stack { display: grid; gap: 16px; }
+
+  .panel {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: var(--shadow);
+    padding: 20px;
+  }
+
+  .section-label {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 14px;
+  }
+
+  /* ---------- Inputs ---------- */
+  input[type="text"], input[type="number"], select {
+    font-family: var(--font-body);
+    font-size: 14px;
+    color: var(--ink);
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 7px 8px;
+    width: 100%;
+    min-width: 0;
+  }
+  input[inputmode="decimal"], input[inputmode="numeric"] { font-family: var(--font-mono); font-weight: 500; }
+  input::placeholder { color: var(--placeholder); }
+
+  input[type="color"] {
+    width: 34px;
+    height: 34px;
+    padding: 2px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--card);
+    cursor: pointer;
+  }
+
+  :is(input, select, button, a):focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* ---------- Print cards ---------- */
+  .print-card {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px;
+    margin-bottom: 14px;
+  }
+  .print-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .print-title {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .print-grid-a {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 72px;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .print-grid-b {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .field-label {
+    display: block;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 5px;
+  }
+
+  .card-foot {
+    border-top: 1px dashed var(--border);
+    margin-top: 12px;
+    padding-top: 10px;
+    display: grid;
+    gap: 4px;
+  }
+  .foot-line { display: flex; justify-content: space-between; align-items: baseline; }
+  .foot-line .k { color: var(--muted); font-size: 13px; }
+  .foot-line .v { font-family: var(--font-mono); font-weight: 500; }
+
+  /* ---------- Filament rows ---------- */
+  .rows-head, .filament-row {
+    display: grid;
+    grid-template-columns: 34px minmax(90px, 1.6fr) 1fr 1fr 1fr 28px;
+    gap: 8px;
+    align-items: center;
+  }
+  .rows-head {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .filament-row { margin-bottom: 8px; }
+  .row-field .mini-label { display: none; }
+
+  .remove-btn {
+    font-family: var(--font-body);
+    font-size: 18px;
+    line-height: 1;
+    color: var(--muted);
+    background: none;
+    border: none;
+    border-radius: 4px;
+    width: 28px;
+    height: 28px;
+    cursor: pointer;
+    justify-self: center;
+    flex-shrink: 0;
+  }
+  .remove-btn:hover { color: var(--loss); }
+
+  .add-btn {
+    display: block;
+    width: 100%;
+    margin-top: 12px;
+    padding: 10px;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: var(--card);
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 120ms ease, color 120ms ease;
+  }
+  .add-btn:hover { background: var(--accent); color: #fff; }
+  .add-btn.solid { background: var(--accent); color: #fff; }
+  .add-btn.solid:hover { background: #C64408; border-color: #C64408; color: #fff; }
+
+  /* ---------- Settings panels ---------- */
+  .duo { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .duo-printer { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
+  .duo-kwh { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); }
+  .duo-sale { grid-template-columns: minmax(0, 1fr) 90px; margin-bottom: 0; }
+
+  .hint {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: -4px;
+  }
+  .footnote {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 12px;
+  }
+  .footnote a { color: inherit; }
+
+  /* ---------- Result panel ---------- */
+  .result-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 12px;
+  }
+  .result-line .k { color: var(--muted); font-size: 13px; }
+  .result-line .v { font-family: var(--font-mono); font-weight: 500; }
+  .result-line.total { border-top: 1px dashed var(--border); padding-top: 10px; }
+
+  .bar-track {
+    position: relative;
+    height: 12px;
+    border-radius: 999px;
+    background: var(--grid);
+    overflow: hidden;
+    display: flex;
+    margin-bottom: 10px;
+  }
+  .bar-track::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 999px;
+    box-shadow: inset 0 0 0 1px var(--hairline);
+    pointer-events: none;
+  }
+  .bar-seg {
+    height: 100%;
+    transition: width 200ms ease;
+    flex-shrink: 0;
+    box-shadow: inset -1px 0 0 var(--hairline);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .bar-seg { transition: none; }
+    .add-btn { transition: none; }
+  }
+
+  .legend { list-style: none; margin-bottom: 16px; }
+  .legend li {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--muted);
+    padding: 2px 0;
+  }
+  .legend .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 1px solid var(--hairline);
+  }
+  .legend .amt {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-weight: 500;
+    color: var(--ink);
+  }
+  .legend .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .profit-figure {
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-size: clamp(32px, 5vw, 48px);
+    line-height: 1.1;
+    letter-spacing: -0.01em;
+  }
+  .profit-figure.pos, .legend .amt.pos { color: var(--profit); }
+  .profit-figure.neg, .legend .amt.neg { color: var(--loss); }
+  .profit-figure.neutral { color: var(--ink); }
+  .figure-label {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .margin-line { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .margin-line .v { font-family: var(--font-mono); font-weight: 500; color: var(--ink); }
+
+  /* ---------- Narrow screens: rows collapse to two lines ---------- */
+  @media (max-width: 560px) {
+    .rows-head { display: none; }
+    .filament-row {
+      grid-template-columns: 34px repeat(6, minmax(0, 1fr)) 28px;
+      grid-template-areas:
+        "swatch name  name  name   name   name   name remove"
+        "price  price price weight weight weight used used";
+      align-items: end;
+      row-gap: 8px;
+      padding-bottom: 12px;
+      border-bottom: 1px dashed var(--border);
+      margin-bottom: 12px;
+    }
+    .filament-row .f-swatch .mini-label { display: none; }
+    .filament-row .f-swatch { grid-area: swatch; }
+    .filament-row .f-name   { grid-area: name; }
+    .filament-row .f-price  { grid-area: price; }
+    .filament-row .f-weight { grid-area: weight; }
+    .filament-row .f-used   { grid-area: used; }
+    .filament-row .f-remove { grid-area: remove; }
+    .row-field .mini-label {
+      display: block;
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 3px;
+      font-family: var(--font-display);
+      font-weight: 600;
+    }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="header-top">
+      <div>
+        <p class="eyebrow">3D printing</p>
+        <h1>Print cost calculator</h1>
+      </div>
+      <button type="button" class="theme-btn" id="theme-toggle" aria-label="Switch to dark theme">
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path>
+        </svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="4"></circle>
+          <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>
+        </svg>
+      </button>
+    </div>
+    <p class="sub">What an order costs you in filament, power, time and postage &mdash; and what&rsquo;s left after the sale.</p>
+  </header>
+
+  <div class="cols">
+    <section class="panel" aria-labelledby="prints-label">
+      <h2 class="section-label" id="prints-label">Prints</h2>
+      <div id="prints"></div>
+      <button type="button" class="add-btn solid" id="add-print">Add print</button>
+    </section>
+
+    <div class="stack">
+      <section class="panel" aria-labelledby="sale-label">
+        <h2 class="section-label" id="sale-label">Sale</h2>
+        <div class="duo duo-sale">
+          <div>
+            <label class="field-label" for="sale-price">Sale price</label>
+            <input type="text" id="sale-price" inputmode="decimal" placeholder="0.00" autocomplete="off">
+          </div>
+          <div>
+            <label class="field-label" for="currency">Currency</label>
+            <select id="currency"></select>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="rates-label">
+        <h2 class="section-label" id="rates-label">Printer &amp; rates</h2>
+        <div class="duo duo-printer">
+          <div>
+            <label class="field-label" for="printer">Printer</label>
+            <select id="printer"></select>
+          </div>
+          <div>
+            <label class="field-label" for="watts">Watts</label>
+            <input type="text" id="watts" inputmode="decimal" placeholder="0" autocomplete="off">
+          </div>
+        </div>
+        <div class="duo duo-kwh">
+          <div>
+            <label class="field-label" for="kwh-price">Electricity / kWh</label>
+            <input type="text" id="kwh-price" inputmode="decimal" placeholder="0.00" autocomplete="off">
+          </div>
+          <div>
+            <label class="field-label" for="kwh-region">Region</label>
+            <select id="kwh-region"></select>
+          </div>
+        </div>
+        <div class="duo" style="grid-template-columns: 1fr;">
+          <div>
+            <label class="field-label" for="wage">Hourly wage</label>
+            <input type="text" id="wage" inputmode="decimal" placeholder="0.00" autocomplete="off">
+          </div>
+        </div>
+        <p class="hint">e.g. UK living wage 12.71 &middot; US federal minimum 7.25</p>
+      </section>
+
+      <section class="panel" aria-labelledby="postage-label">
+        <h2 class="section-label" id="postage-label">Postage</h2>
+        <div class="duo" style="grid-template-columns: 1fr;">
+          <div>
+            <label class="field-label" for="postage-service">Service</label>
+            <select id="postage-service"></select>
+          </div>
+        </div>
+        <p class="hint" id="postage-hint" hidden></p>
+        <div class="duo">
+          <div>
+            <label class="field-label" for="postage-price">Price</label>
+            <input type="text" id="postage-price" inputmode="decimal" placeholder="0.00" autocomplete="off">
+          </div>
+          <div>
+            <label class="field-label" for="packaging">Packaging</label>
+            <input type="text" id="packaging" inputmode="decimal" placeholder="0.00" autocomplete="off">
+          </div>
+        </div>
+        <p class="footnote">Royal Mail prices as of July 2026 &mdash; <a href="https://www.royalmail.com/price-finder" target="_blank" rel="noopener">check royalmail.com</a></p>
+      </section>
+
+      <section class="panel" aria-labelledby="result-label">
+        <h2 class="section-label" id="result-label">Result</h2>
+        <div class="result-line">
+          <span class="k">Materials</span>
+          <span class="v" id="bd-materials">£0.00</span>
+        </div>
+        <div class="result-line">
+          <span class="k">Electricity</span>
+          <span class="v" id="bd-electricity">£0.00</span>
+        </div>
+        <div class="result-line">
+          <span class="k">Labour</span>
+          <span class="v" id="bd-labour">£0.00</span>
+        </div>
+        <div class="result-line">
+          <span class="k">Postage &amp; packaging</span>
+          <span class="v" id="bd-postage">£0.00</span>
+        </div>
+        <div class="result-line total">
+          <span class="k">Total cost</span>
+          <span class="v" id="bd-total">£0.00</span>
+        </div>
+        <div class="result-line" id="line-revenue">
+          <span class="k">Revenue</span>
+          <span class="v" id="bd-revenue">£0.00</span>
+        </div>
+        <div class="bar-track" id="bar" role="img" aria-label="Cost and profit breakdown bar"></div>
+        <ul class="legend" id="legend"></ul>
+        <p class="figure-label" id="figure-label">Profit</p>
+        <div class="profit-figure pos" id="profit">£0.00</div>
+        <p class="margin-line" id="margin-line">Margin vs revenue <span class="v" id="margin">&mdash;</span></p>
+        <p class="margin-line" id="no-sale-hint" hidden>Set a sale price to see profit</p>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script src="calc.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var STORAGE_KEY = 'printCostCalculator';
+  var CUSTOM = 'Custom';
+  var CUSTOM_ID = 'custom';
+  var SERVICE_NONE_ID = 'none';
+
+  var SWATCHES = ['#E8500F', '#2274A5', '#7A4EAB', '#D4A017', '#C2418B', '#4A4E57'];
+  var CURRENCIES = ['£', '$', '€', '¥', '₹', 'A$', 'C$', 'CHF', 'kr', 'zł'];
+
+  var PRINTERS = [
+    { name: 'Bambu Lab A1', watts: '80' },
+    { name: 'Bambu Lab P1S / X1C', watts: '105' },
+    { name: 'Prusa MK4', watts: '90' },
+    { name: 'Creality Ender 3 (V2/V3)', watts: '120' },
+    { name: 'Creality K1', watts: '150' },
+    { name: 'Elegoo Neptune 4', watts: '120' },
+    { name: 'Snapmaker U1', watts: '125' }
+  ];
+
+  var REGIONS = [
+    { id: 'uk', label: 'UK price cap', price: '0.2611' },
+    { id: 'us', label: 'US average', price: '0.188' },
+    { id: 'eu', label: 'EU average', price: '0.29' }
+  ];
+
+  var SERVICES = [
+    { id: 'll1-100', label: 'Large Letter 1st Class (≤100g)', price: '3.30', maxWeight: '100 g', maxSize: '35.3 × 25 × 2.5 cm' },
+    { id: 'll2-100', label: 'Large Letter 2nd Class (≤100g)', price: '1.55', maxWeight: '100 g', maxSize: '35.3 × 25 × 2.5 cm' },
+    { id: 'll1-750', label: 'Large Letter 1st Class (≤750g)', price: '3.60', maxWeight: '750 g', maxSize: '35.3 × 25 × 2.5 cm' },
+    { id: 'll2-750', label: 'Large Letter 2nd Class (≤750g)', price: '2.70', maxWeight: '750 g', maxSize: '35.3 × 25 × 2.5 cm' },
+    { id: 'sp1', label: 'Small Parcel 1st Class', price: '5.45', maxWeight: '2 kg', maxSize: '45 × 35 × 16 cm' },
+    { id: 'sp2', label: 'Small Parcel 2nd Class', price: '4.25', maxWeight: '2 kg', maxSize: '45 × 35 × 16 cm' },
+    { id: 'spt24', label: 'Small Parcel Tracked 24', price: '7.30', maxWeight: '2 kg', maxSize: '45 × 35 × 16 cm' },
+    { id: 'spt48', label: 'Small Parcel Tracked 48', price: '6.05', maxWeight: '2 kg', maxSize: '45 × 35 × 16 cm' },
+    { id: 'mp1-2', label: 'Medium Parcel 1st Class (≤2kg)', price: '8.05', maxWeight: '2 kg', maxSize: '61 × 46 × 46 cm' },
+    { id: 'mp2-2', label: 'Medium Parcel 2nd Class (≤2kg)', price: '6.95', maxWeight: '2 kg', maxSize: '61 × 46 × 46 cm' },
+    { id: 'mp1-10', label: 'Medium Parcel 1st Class (≤10kg)', price: '10.05', maxWeight: '10 kg', maxSize: '61 × 46 × 46 cm' },
+    { id: 'mp2-10', label: 'Medium Parcel 2nd Class (≤10kg)', price: '8.75', maxWeight: '10 kg', maxSize: '61 × 46 × 46 cm' }
+  ];
+
+  var salePriceEl = document.getElementById('sale-price');
+  var printsEl = document.getElementById('prints');
+  var addPrintBtn = document.getElementById('add-print');
+  var printerSel = document.getElementById('printer');
+  var wattsEl = document.getElementById('watts');
+  var kwhPriceEl = document.getElementById('kwh-price');
+  var kwhRegionSel = document.getElementById('kwh-region');
+  var wageEl = document.getElementById('wage');
+  var currencySel = document.getElementById('currency');
+  var serviceSel = document.getElementById('postage-service');
+  var postageHintEl = document.getElementById('postage-hint');
+  var postagePriceEl = document.getElementById('postage-price');
+  var packagingEl = document.getElementById('packaging');
+  var themeBtn = document.getElementById('theme-toggle');
+  var barEl = document.getElementById('bar');
+  var legendEl = document.getElementById('legend');
+  var profitEl = document.getElementById('profit');
+  var marginEl = document.getElementById('margin');
+  var lineRevenueEl = document.getElementById('line-revenue');
+  var marginLineEl = document.getElementById('margin-line');
+  var noSaleHintEl = document.getElementById('no-sale-hint');
+  var figureLabelEl = document.getElementById('figure-label');
+  var bd = {
+    materials: document.getElementById('bd-materials'),
+    electricity: document.getElementById('bd-electricity'),
+    labour: document.getElementById('bd-labour'),
+    postage: document.getElementById('bd-postage'),
+    total: document.getElementById('bd-total'),
+    revenue: document.getElementById('bd-revenue')
+  };
+  var uid = 0;
+  var cardRefs = [];
+
+  function freshRow(i) {
+    return { color: SWATCHES[(i || 0) % SWATCHES.length], name: '', spoolPrice: '', spoolWeight: '1000', gramsUsed: '' };
+  }
+
+  function freshPrint() {
+    return { name: '', qty: '1', hours: '', labourMinutes: '', rows: [freshRow(0)] };
+  }
+
+  function defaultState() {
+    return {
+      v: 3,
+      theme: null,
+      currency: '£',
+      salePrice: '',
+      settings: { printer: CUSTOM, watts: '', kwhRegion: 'uk', kwhPrice: '0.2611', wage: '' },
+      prints: [freshPrint()],
+      postage: { service: SERVICE_NONE_ID, price: '0', packaging: '' }
+    };
+  }
+
+  function str(v, d) { return typeof v === 'string' ? v : d; }
+
+  // Number coercion for migration: mirrors calc.js toNumber ('' -> NaN).
+  function migNum(v) {
+    if (typeof v === 'number') return isFinite(v) ? v : NaN;
+    if (typeof v === 'string' && v.trim() !== '') {
+      var n = Number(v);
+      return isFinite(n) ? n : NaN;
+    }
+    return NaN;
+  }
+
+  function inList(v, list) { return list.indexOf(v) !== -1; }
+
+  function names(arr) { return arr.map(function (x) { return x.name; }); }
+
+  function ids(arr) { return arr.map(function (x) { return x.id; }); }
+
+  function sanitizeRow(r) {
+    r = (r && typeof r === 'object') ? r : {};
+    return {
+      color: str(r.color, '#E8500F'),
+      name: str(r.name, ''),
+      spoolPrice: str(r.spoolPrice, ''),
+      spoolWeight: str(r.spoolWeight, '1000'),
+      gramsUsed: str(r.gramsUsed, '')
+    };
+  }
+
+  function sanitizeRows(rows) {
+    if (!Array.isArray(rows) || rows.length === 0) return [freshRow(0)];
+    return rows.map(sanitizeRow);
+  }
+
+  function sanitizePrint(p) {
+    p = (p && typeof p === 'object') ? p : {};
+    return {
+      name: str(p.name, ''),
+      qty: str(p.qty, '1'),
+      hours: str(p.hours, ''),
+      labourMinutes: str(p.labourMinutes, ''),
+      rows: sanitizeRows(p.rows)
+    };
+  }
+
+  function loadState() {
+    var d = defaultState();
+    var raw;
+    try {
+      raw = localStorage.getItem(STORAGE_KEY);
+    } catch (e) {
+      return d;
+    }
+    if (!raw) return d;
+    var s;
+    try {
+      s = JSON.parse(raw);
+    } catch (e) {
+      return d;
+    }
+    if (!s || typeof s !== 'object') return d;
+
+    // Old MVP shape: { currency, salePrice, rows } — no v field. Migrate.
+    if (s.v === undefined && Array.isArray(s.rows)) {
+      var migrated = defaultState();
+      migrated.currency = inList(s.currency, CURRENCIES) ? s.currency : '£';
+      migrated.salePrice = str(s.salePrice, '');
+      var p = freshPrint();
+      p.rows = sanitizeRows(s.rows);
+      migrated.prints = [p];
+      return migrated;
+    }
+
+    if (s.v !== 2 && s.v !== 3) return d;
+
+    var settings = (s.settings && typeof s.settings === 'object') ? s.settings : {};
+    var postage = (s.postage && typeof s.postage === 'object') ? s.postage : {};
+
+    // v2 prints carried a per-print unitPrice; v3 has one order-level sale
+    // price. Preserve the user's revenue: salePrice = Σ unitPrice × qty.
+    var salePrice;
+    if (s.v === 2) {
+      var total = 0;
+      var oldPrints = Array.isArray(s.prints) ? s.prints : [];
+      for (var i = 0; i < oldPrints.length; i++) {
+        var op = oldPrints[i];
+        if (!op || typeof op !== 'object') continue;
+        var up = migNum(op.unitPrice);
+        if (isNaN(up) || up < 0) up = 0;
+        var q = migNum(op.qty);
+        q = (isNaN(q) || q < 0) ? 1 : Math.floor(q);
+        total += up * q;
+      }
+      salePrice = total > 0 ? String(total) : '';
+    } else {
+      salePrice = str(s.salePrice, '');
+    }
+
+    return {
+      v: 3,
+      theme: (s.theme === 'light' || s.theme === 'dark') ? s.theme : null,
+      currency: inList(s.currency, CURRENCIES) ? s.currency : '£',
+      salePrice: salePrice,
+      settings: {
+        printer: inList(settings.printer, names(PRINTERS)) || settings.printer === CUSTOM ? settings.printer : CUSTOM,
+        watts: str(settings.watts, ''),
+        kwhRegion: inList(settings.kwhRegion, ids(REGIONS)) || settings.kwhRegion === CUSTOM_ID ? settings.kwhRegion : CUSTOM_ID,
+        kwhPrice: str(settings.kwhPrice, ''),
+        wage: str(settings.wage, '')
+      },
+      prints: (Array.isArray(s.prints) && s.prints.length > 0) ? s.prints.map(sanitizePrint) : [freshPrint()],
+      postage: {
+        service: (inList(postage.service, ids(SERVICES)) || postage.service === SERVICE_NONE_ID || postage.service === CUSTOM_ID) ? postage.service : CUSTOM_ID,
+        price: str(postage.price, ''),
+        packaging: str(postage.packaging, '')
+      }
+    };
+  }
+
+  var state = loadState();
+
+  function saveState() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (e) { /* storage unavailable; keep working without persistence */ }
+  }
+
+  /* ---------- Calc adapters (calc.js expects printHours) ---------- */
+
+  function toCalcPrint(p) {
+    return { qty: p.qty, printHours: p.hours, labourMinutes: p.labourMinutes, rows: p.rows };
+  }
+
+  function calcSettings() {
+    return { watts: state.settings.watts, kwhPrice: state.settings.kwhPrice, wage: state.settings.wage };
+  }
+
+  function displayQty(qty) {
+    var n = Number(qty);
+    if (qty === '' || !isFinite(n) || n < 0) return 1;
+    return Math.floor(n);
+  }
+
+  function fmt(n) {
+    var sym = state.currency;
+    if (n < 0) return '−' + sym + Math.abs(n).toFixed(2);
+    return sym + n.toFixed(2);
+  }
+
+  /* ---------- Shared input builders ---------- */
+
+  function field(cls, labelText, inputEl) {
+    var wrap = document.createElement('div');
+    wrap.className = 'row-field ' + cls;
+    var mini = document.createElement('label');
+    mini.className = 'mini-label';
+    mini.textContent = labelText;
+    mini.setAttribute('for', inputEl.id);
+    // The mini label is display:none on wide screens; give every input an
+    // always-available accessible name via aria-label as well.
+    inputEl.setAttribute('aria-label', labelText);
+    wrap.appendChild(mini);
+    wrap.appendChild(inputEl);
+    return wrap;
+  }
+
+  function labeled(labelText, inputEl) {
+    var wrap = document.createElement('div');
+    var lab = document.createElement('label');
+    lab.className = 'field-label';
+    lab.textContent = labelText;
+    lab.setAttribute('for', inputEl.id);
+    wrap.appendChild(lab);
+    wrap.appendChild(inputEl);
+    return wrap;
+  }
+
+  function makeInput(type, id, value, placeholder, mode) {
+    var el = document.createElement('input');
+    el.type = type;
+    el.id = id;
+    el.value = value;
+    if (placeholder) el.placeholder = placeholder;
+    if (mode) el.setAttribute('inputmode', mode);
+    el.autocomplete = 'off';
+    return el;
+  }
+
+  function fillSelect(sel, options) {
+    sel.textContent = '';
+    options.forEach(function (o) {
+      var opt = document.createElement('option');
+      opt.value = o.value;
+      opt.textContent = o.label;
+      sel.appendChild(opt);
+    });
+  }
+
+  function strOpts(list) {
+    return list.map(function (n) { return { value: n, label: n }; });
+  }
+
+  function idOpts(list) {
+    return list.map(function (x) { return { value: x.id, label: x.label }; });
+  }
+
+  /* ---------- Prints panel ---------- */
+
+  function renderFilamentRows(container, print, cardIndex) {
+    container.textContent = '';
+    print.rows.forEach(function (row, i) {
+      var id = 'r' + (uid++);
+      var rowEl = document.createElement('div');
+      rowEl.className = 'filament-row';
+
+      var color = makeInput('color', id + '-color', row.color || '#E8500F');
+      var name = makeInput('text', id + '-name', row.name, 'PLA — Galaxy Black');
+      var price = makeInput('text', id + '-price', row.spoolPrice, '0.00', 'decimal');
+      var weight = makeInput('text', id + '-weight', row.spoolWeight, '1000', 'decimal');
+      var used = makeInput('text', id + '-used', row.gramsUsed, '0', 'decimal');
+
+      color.addEventListener('input', function () { row.color = color.value; update(); });
+      name.addEventListener('input', function () { row.name = name.value; update(); });
+      price.addEventListener('input', function () { row.spoolPrice = price.value; update(); });
+      weight.addEventListener('input', function () { row.spoolWeight = weight.value; update(); });
+      used.addEventListener('input', function () { row.gramsUsed = used.value; update(); });
+
+      var remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'remove-btn f-remove';
+      remove.textContent = '×';
+      remove.setAttribute('aria-label', 'Remove filament ' + (i + 1) + ' from print ' + (cardIndex + 1));
+      remove.addEventListener('click', function () {
+        print.rows.splice(i, 1);
+        if (print.rows.length === 0) print.rows.push(freshRow(0));
+        renderPrints();
+        update();
+      });
+
+      rowEl.appendChild(field('f-swatch', 'Colour', color));
+      rowEl.appendChild(field('f-name', 'Filament', name));
+      rowEl.appendChild(field('f-price', 'Spool price', price));
+      rowEl.appendChild(field('f-weight', 'Spool wt (g)', weight));
+      rowEl.appendChild(field('f-used', 'Used (g)', used));
+      rowEl.appendChild(remove);
+      container.appendChild(rowEl);
+    });
+  }
+
+  function renderPrints() {
+    printsEl.textContent = '';
+    cardRefs = [];
+
+    state.prints.forEach(function (print, pi) {
+      var id = 'p' + (uid++);
+      var card = document.createElement('div');
+      card.className = 'print-card';
+
+      // Header
+      var head = document.createElement('div');
+      head.className = 'print-card-head';
+      var title = document.createElement('span');
+      title.className = 'print-title';
+      title.textContent = print.name || 'Print ' + (pi + 1);
+      var remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'remove-btn';
+      remove.textContent = '×';
+      remove.setAttribute('aria-label', 'Remove print ' + (pi + 1));
+      remove.addEventListener('click', function () {
+        state.prints.splice(pi, 1);
+        if (state.prints.length === 0) state.prints.push(freshPrint());
+        renderPrints();
+        update();
+      });
+      head.appendChild(title);
+      head.appendChild(remove);
+      card.appendChild(head);
+
+      // Name + qty
+      var gridA = document.createElement('div');
+      gridA.className = 'print-grid-a';
+      var nameIn = makeInput('text', id + '-name', print.name, 'Dragon — large');
+      var qtyIn = makeInput('text', id + '-qty', print.qty, '1', 'numeric');
+      nameIn.addEventListener('input', function () {
+        print.name = nameIn.value;
+        title.textContent = print.name || 'Print ' + (pi + 1);
+        update();
+      });
+      qtyIn.addEventListener('input', function () { print.qty = qtyIn.value; update(); });
+      gridA.appendChild(labeled('Name', nameIn));
+      gridA.appendChild(labeled('Qty', qtyIn));
+      card.appendChild(gridA);
+
+      // Hours + labour minutes
+      var gridB = document.createElement('div');
+      gridB.className = 'print-grid-b';
+      var hoursIn = makeInput('text', id + '-hours', print.hours, '0', 'decimal');
+      var labourIn = makeInput('text', id + '-labour', print.labourMinutes, '0', 'decimal');
+      hoursIn.addEventListener('input', function () { print.hours = hoursIn.value; update(); });
+      labourIn.addEventListener('input', function () { print.labourMinutes = labourIn.value; update(); });
+      gridB.appendChild(labeled('Print hrs', hoursIn));
+      gridB.appendChild(labeled('Labour min', labourIn));
+      card.appendChild(gridB);
+
+      // Filament rows
+      var rowsHead = document.createElement('div');
+      rowsHead.className = 'rows-head';
+      rowsHead.setAttribute('aria-hidden', 'true');
+      ['', 'Filament', 'Spool price', 'Spool wt (g)', 'Used (g)', ''].forEach(function (t) {
+        var span = document.createElement('span');
+        span.textContent = t;
+        rowsHead.appendChild(span);
+      });
+      card.appendChild(rowsHead);
+
+      var rowsWrap = document.createElement('div');
+      rowsWrap.className = 'p-rows';
+      renderFilamentRows(rowsWrap, print, pi);
+      card.appendChild(rowsWrap);
+
+      var addRow = document.createElement('button');
+      addRow.type = 'button';
+      addRow.className = 'add-btn';
+      addRow.textContent = 'Add filament';
+      addRow.addEventListener('click', function () {
+        print.rows.push(freshRow(print.rows.length));
+        renderPrints();
+        update();
+        var card2 = printsEl.children[pi];
+        if (card2) {
+          var inputs = card2.querySelectorAll('.p-rows .filament-row:last-child input[type="text"]');
+          if (inputs.length) inputs[0].focus();
+        }
+      });
+      card.appendChild(addRow);
+
+      // Footer
+      var foot = document.createElement('div');
+      foot.className = 'card-foot';
+      var unitLine = document.createElement('div');
+      unitLine.className = 'foot-line';
+      var unitK = document.createElement('span');
+      unitK.className = 'k';
+      unitK.textContent = 'Unit cost';
+      var unitV = document.createElement('span');
+      unitV.className = 'v';
+      unitLine.appendChild(unitK);
+      unitLine.appendChild(unitV);
+      var subLine = document.createElement('div');
+      subLine.className = 'foot-line';
+      var subK = document.createElement('span');
+      subK.className = 'k';
+      subK.textContent = 'Subtotal (× 1)';
+      var subV = document.createElement('span');
+      subV.className = 'v';
+      subLine.appendChild(subK);
+      subLine.appendChild(subV);
+      foot.appendChild(unitLine);
+      foot.appendChild(subLine);
+      card.appendChild(foot);
+
+      cardRefs.push({ unit: unitV, sub: subV, subLabel: subK });
+      printsEl.appendChild(card);
+    });
+  }
+
+  /* ---------- Result panel ---------- */
+
+  function renderBar(totals, filSegs) {
+    barEl.textContent = '';
+    var scale = 0;
+    var showProfitSeg = false;
+    if (totals.revenue > 0 && totals.totalCost <= totals.revenue) {
+      scale = totals.revenue;
+      showProfitSeg = totals.profit > 0;
+    } else if (totals.totalCost > 0) {
+      scale = totals.totalCost; // loss (or no revenue): bar filled entirely by costs
+    }
+    if (scale <= 0) return;
+
+    function seg(cost, color) {
+      if (cost <= 0) return;
+      var el = document.createElement('div');
+      el.className = 'bar-seg';
+      el.style.width = (cost / scale * 100) + '%';
+      el.style.backgroundColor = color;
+      barEl.appendChild(el);
+    }
+
+    filSegs.forEach(function (fs) { seg(fs.cost, fs.color); });
+    seg(totals.electricity, 'var(--seg-elec)');
+    seg(totals.labour, 'var(--seg-labour)');
+    seg(totals.postagePackaging, 'var(--seg-post)');
+    if (showProfitSeg) seg(totals.profit, 'var(--profit)');
+  }
+
+  function legendItem(color, name, amtText, amtCls) {
+    var li = document.createElement('li');
+    var dot = document.createElement('span');
+    dot.className = 'dot';
+    dot.style.backgroundColor = color;
+    var nm = document.createElement('span');
+    nm.className = 'name';
+    nm.textContent = name;
+    var amt = document.createElement('span');
+    amt.className = 'amt' + (amtCls ? ' ' + amtCls : '');
+    amt.textContent = amtText;
+    li.appendChild(dot);
+    li.appendChild(nm);
+    li.appendChild(amt);
+    legendEl.appendChild(li);
+  }
+
+  function renderLegend(totals, filSegs) {
+    legendEl.textContent = '';
+    filSegs.forEach(function (fs) {
+      legendItem(fs.color, fs.name, fmt(fs.cost));
+    });
+    legendItem('var(--seg-elec)', 'Electricity', fmt(totals.electricity));
+    legendItem('var(--seg-labour)', 'Labour', fmt(totals.labour));
+    legendItem('var(--seg-post)', 'Postage', fmt(totals.postagePackaging));
+    if (totals.revenue > 0) {
+      legendItem(totals.profit >= 0 ? 'var(--profit)' : 'var(--loss)', 'Profit', fmt(totals.profit), totals.profit >= 0 ? 'pos' : 'neg');
+    }
+  }
+
+  function update() {
+    var settings = calcSettings();
+    var calcPrints = state.prints.map(toCalcPrint);
+    var totals = Calc.orderTotals(state.salePrice, calcPrints, state.postage, settings);
+    var multi = state.prints.length > 1;
+
+    state.prints.forEach(function (print, pi) {
+      var refs = cardRefs[pi];
+      if (!refs) return;
+      var cp = calcPrints[pi];
+      refs.unit.textContent = fmt(Calc.printUnitCost(cp, settings));
+      refs.sub.textContent = fmt(Calc.printSubtotal(cp, settings));
+      refs.subLabel.textContent = 'Subtotal (× ' + displayQty(print.qty) + ')';
+    });
+
+    bd.materials.textContent = fmt(totals.materials);
+    bd.electricity.textContent = fmt(totals.electricity);
+    bd.labour.textContent = fmt(totals.labour);
+    bd.postage.textContent = fmt(totals.postagePackaging);
+    bd.total.textContent = fmt(totals.totalCost);
+    bd.revenue.textContent = fmt(totals.revenue);
+
+    // No sale price yet: the headline figure is what the order costs,
+    // not a meaningless negative profit.
+    var hasSale = totals.revenue > 0;
+    lineRevenueEl.hidden = !hasSale;
+    marginLineEl.hidden = !hasSale;
+    noSaleHintEl.hidden = hasSale;
+    figureLabelEl.textContent = hasSale ? 'Profit' : 'Total cost';
+    if (hasSale) {
+      profitEl.textContent = fmt(totals.profit);
+      profitEl.className = 'profit-figure ' + (totals.profit >= 0 ? 'pos' : 'neg');
+    } else {
+      profitEl.textContent = fmt(totals.totalCost);
+      profitEl.className = 'profit-figure neutral';
+    }
+    marginEl.textContent = totals.margin === null ? '—' : totals.margin.toFixed(1) + '%';
+
+    var filSegs = [];
+    state.prints.forEach(function (print, pi) {
+      var q = displayQty(print.qty);
+      var prefix = multi ? (print.name || 'Print ' + (pi + 1)) + ' · ' : '';
+      print.rows.forEach(function (row, ri) {
+        filSegs.push({
+          color: row.color || '#E8500F',
+          name: prefix + (row.name || 'Filament ' + (ri + 1)),
+          cost: Calc.rowCost(row) * q
+        });
+      });
+    });
+
+    renderBar(totals, filSegs);
+    renderLegend(totals, filSegs);
+    saveState();
+  }
+
+  /* ---------- Sale ---------- */
+
+  salePriceEl.addEventListener('input', function () {
+    state.salePrice = salePriceEl.value;
+    update();
+  });
+
+  /* ---------- Printer & rates ---------- */
+
+  fillSelect(printerSel, strOpts(names(PRINTERS).concat([CUSTOM])));
+  fillSelect(kwhRegionSel, idOpts(REGIONS).concat([{ value: CUSTOM_ID, label: CUSTOM }]));
+  fillSelect(currencySel, strOpts(CURRENCIES));
+  fillSelect(serviceSel, [{ value: SERVICE_NONE_ID, label: 'None (collection)' }]
+    .concat(idOpts(SERVICES))
+    .concat([{ value: CUSTOM_ID, label: CUSTOM }]));
+
+  printerSel.addEventListener('change', function () {
+    state.settings.printer = printerSel.value;
+    if (printerSel.value !== CUSTOM) {
+      var preset = PRINTERS.filter(function (p) { return p.name === printerSel.value; })[0];
+      if (preset) {
+        wattsEl.value = preset.watts;
+        state.settings.watts = preset.watts;
+      }
+    }
+    update();
+  });
+
+  wattsEl.addEventListener('input', function () {
+    state.settings.watts = wattsEl.value;
+    if (printerSel.value !== CUSTOM) {
+      printerSel.value = CUSTOM;
+      state.settings.printer = CUSTOM;
+    }
+    update();
+  });
+
+  kwhRegionSel.addEventListener('change', function () {
+    state.settings.kwhRegion = kwhRegionSel.value;
+    if (kwhRegionSel.value !== CUSTOM_ID) {
+      var region = REGIONS.filter(function (r) { return r.id === kwhRegionSel.value; })[0];
+      if (region) {
+        kwhPriceEl.value = region.price;
+        state.settings.kwhPrice = region.price;
+      }
+    }
+    update();
+  });
+
+  kwhPriceEl.addEventListener('input', function () {
+    state.settings.kwhPrice = kwhPriceEl.value;
+    if (kwhRegionSel.value !== CUSTOM_ID) {
+      kwhRegionSel.value = CUSTOM_ID;
+      state.settings.kwhRegion = CUSTOM_ID;
+    }
+    update();
+  });
+
+  wageEl.addEventListener('input', function () {
+    state.settings.wage = wageEl.value;
+    update();
+  });
+
+  currencySel.addEventListener('change', function () {
+    state.currency = currencySel.value;
+    update();
+  });
+
+  /* ---------- Postage ---------- */
+
+  function updatePostageHint() {
+    var svc = SERVICES.filter(function (s) { return s.id === state.postage.service; })[0];
+    if (svc) {
+      postageHintEl.textContent = svc.label + ' — max ' + svc.maxSize + ', up to ' + svc.maxWeight;
+      postageHintEl.hidden = false;
+    } else {
+      postageHintEl.textContent = '';
+      postageHintEl.hidden = true;
+    }
+  }
+
+  serviceSel.addEventListener('change', function () {
+    state.postage.service = serviceSel.value;
+    if (serviceSel.value === SERVICE_NONE_ID) {
+      postagePriceEl.value = '0';
+      state.postage.price = '0';
+    } else if (serviceSel.value !== CUSTOM_ID) {
+      var svc = SERVICES.filter(function (s) { return s.id === serviceSel.value; })[0];
+      if (svc) {
+        postagePriceEl.value = svc.price;
+        state.postage.price = svc.price;
+      }
+    }
+    updatePostageHint();
+    update();
+  });
+
+  postagePriceEl.addEventListener('input', function () {
+    state.postage.price = postagePriceEl.value;
+    if (serviceSel.value !== CUSTOM_ID) {
+      serviceSel.value = CUSTOM_ID;
+      state.postage.service = CUSTOM_ID;
+      updatePostageHint();
+    }
+    update();
+  });
+
+  packagingEl.addEventListener('input', function () {
+    state.postage.packaging = packagingEl.value;
+    update();
+  });
+
+  /* ---------- Add print ---------- */
+
+  addPrintBtn.addEventListener('click', function () {
+    state.prints.push(freshPrint());
+    renderPrints();
+    update();
+    var lastCard = printsEl.lastElementChild;
+    if (lastCard) {
+      var input = lastCard.querySelector('input[type="text"]');
+      if (input) input.focus();
+    }
+  });
+
+  /* ---------- Theme ---------- */
+
+  var root = document.documentElement;
+
+  function applyTheme(theme) {
+    root.setAttribute('data-theme', theme);
+    themeBtn.setAttribute('aria-label', theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme');
+  }
+
+  themeBtn.addEventListener('click', function () {
+    var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    state.theme = next;
+    applyTheme(next);
+    saveState();
+  });
+
+  /* ---------- Restore ---------- */
+
+  applyTheme(root.getAttribute('data-theme') === 'dark' ? 'dark' : 'light');
+  salePriceEl.value = state.salePrice;
+  printerSel.value = state.settings.printer;
+  wattsEl.value = state.settings.watts;
+  kwhRegionSel.value = state.settings.kwhRegion;
+  kwhPriceEl.value = state.settings.kwhPrice;
+  wageEl.value = state.settings.wage;
+  currencySel.value = state.currency;
+  serviceSel.value = state.postage.service;
+  postagePriceEl.value = state.postage.price;
+  packagingEl.value = state.postage.packaging;
+  updatePostageHint();
+  renderPrints();
+  update();
+})();
+</script>
+</body>
+</html>
