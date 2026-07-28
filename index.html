@@ -663,6 +663,14 @@
         </div>
         <div class="bar-track" id="bar" role="img" aria-label="Cost and profit breakdown bar"></div>
         <ul class="legend" id="legend"></ul>
+        <div id="filament-usage" hidden>
+          <h3 class="lib-sub">Filament used</h3>
+          <ul class="legend" id="filament-usage-list"></ul>
+          <div class="result-line total">
+            <span class="k">Total filament</span>
+            <span class="v" id="filament-usage-total">0&nbsp;g</span>
+          </div>
+        </div>
         <p class="figure-label" id="figure-label">Profit</p>
         <div class="profit-figure pos" id="profit">£0.00</div>
         <p class="margin-line" id="margin-line">Margin vs revenue <span class="v" id="margin">&mdash;</span></p>
@@ -753,6 +761,9 @@
   var libFilamentsEl = document.getElementById('library-filaments');
   var barEl = document.getElementById('bar');
   var legendEl = document.getElementById('legend');
+  var filUsageWrap = document.getElementById('filament-usage');
+  var filUsageList = document.getElementById('filament-usage-list');
+  var filUsageTotal = document.getElementById('filament-usage-total');
   var profitEl = document.getElementById('profit');
   var marginEl = document.getElementById('margin');
   var lineRevenueEl = document.getElementById('line-revenue');
@@ -1380,7 +1391,7 @@
     if (showProfitSeg) seg(totals.profit, 'var(--profit)');
   }
 
-  function legendItem(color, name, amtText, amtCls) {
+  function legendItem(listEl, color, name, amtText, amtCls) {
     var li = document.createElement('li');
     var dot = document.createElement('span');
     dot.className = 'dot';
@@ -1394,20 +1405,35 @@
     li.appendChild(dot);
     li.appendChild(nm);
     li.appendChild(amt);
-    legendEl.appendChild(li);
+    listEl.appendChild(li);
   }
 
   function renderLegend(totals, filSegs) {
     legendEl.textContent = '';
     filSegs.forEach(function (fs) {
-      legendItem(fs.color, fs.name, fmt(fs.cost));
+      legendItem(legendEl, fs.color, fs.name, fmt(fs.cost));
     });
-    legendItem('var(--seg-elec)', 'Electricity', fmt(totals.electricity));
-    legendItem('var(--seg-labour)', 'Labour', fmt(totals.labour));
-    legendItem('var(--seg-post)', 'Postage', fmt(totals.postagePackaging));
+    legendItem(legendEl, 'var(--seg-elec)', 'Electricity', fmt(totals.electricity));
+    legendItem(legendEl, 'var(--seg-labour)', 'Labour', fmt(totals.labour));
+    legendItem(legendEl, 'var(--seg-post)', 'Postage', fmt(totals.postagePackaging));
     if (totals.revenue > 0) {
-      legendItem(totals.profit >= 0 ? 'var(--profit)' : 'var(--loss)', 'Profit', fmt(totals.profit), totals.profit >= 0 ? 'pos' : 'neg');
+      legendItem(legendEl, totals.profit >= 0 ? 'var(--profit)' : 'var(--loss)', 'Profit', fmt(totals.profit), totals.profit >= 0 ? 'pos' : 'neg');
     }
+  }
+
+  function fmtGrams(g) {
+    return (Math.round(g * 10) / 10) + '\u00a0g';
+  }
+
+  function renderFilamentUsage(usage) {
+    filUsageList.textContent = '';
+    filUsageWrap.hidden = usage.total <= 0;
+    if (filUsageWrap.hidden) return;
+    usage.filaments.forEach(function (f) {
+      if (f.grams <= 0) return;
+      legendItem(filUsageList, f.color || '#E8500F', f.name || 'Unnamed', fmtGrams(f.grams));
+    });
+    filUsageTotal.textContent = fmtGrams(usage.total);
   }
 
   function update() {
@@ -1463,6 +1489,7 @@
 
     renderBar(totals, filSegs);
     renderLegend(totals, filSegs);
+    renderFilamentUsage(Calc.filamentUsage(calcPrints));
     saveState();
   }
 

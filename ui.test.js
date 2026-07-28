@@ -29,7 +29,7 @@ test('index.html contains inline scripts that parse without syntax errors', () =
 
 test('loads calc.js and uses its exported order-level API', () => {
   assert.match(html, /<script src="calc\.js"><\/script>/);
-  for (const fn of ['Calc.orderTotals', 'Calc.printUnitCost', 'Calc.printSubtotal', 'Calc.rowCost']) {
+  for (const fn of ['Calc.orderTotals', 'Calc.printUnitCost', 'Calc.printSubtotal', 'Calc.rowCost', 'Calc.filamentUsage']) {
     assert.ok(html.includes(fn), 'expected page to call ' + fn);
   }
 });
@@ -75,6 +75,7 @@ test('required element ids exist in markup', () => {
   const ids = ['sale-price', 'prints', 'add-print', 'printer', 'watts', 'kwh-price', 'kwh-region',
     'wage', 'currency', 'postage-service', 'postage-hint', 'postage-price', 'packaging',
     'theme-toggle', 'bar', 'legend', 'profit', 'margin',
+    'filament-usage', 'filament-usage-list', 'filament-usage-total',
     'bd-materials', 'bd-electricity', 'bd-labour', 'bd-postage', 'bd-total', 'bd-revenue'];
   for (const id of ids) {
     assert.ok(html.includes('id="' + id + '"'), 'missing element id ' + id);
@@ -339,6 +340,48 @@ test('runtime: typing a sale price sets revenue, profit and persists', () => {
   assert.strictEqual(sb.byId['bd-revenue'].textContent, '£12.50');
   assert.strictEqual(sb.byId['profit'].textContent, '£12.50');
   assert.strictEqual(sb.byId['margin'].textContent, '100.0%');
+});
+
+test('runtime: filament usage totals grams and merges rows with the same name', () => {
+  const v3 = {
+    v: 3,
+    currency: '£',
+    salePrice: '',
+    settings: { printer: 'Custom', watts: '', kwhRegion: 'uk', kwhPrice: '0.2611', wage: '' },
+    prints: [
+      {
+        name: 'A', qty: '2', hours: '', labourMinutes: '',
+        rows: [{ color: '#2274A5', name: 'PLA Blue', spoolPrice: '20', spoolWeight: '1000', gramsUsed: '50' }]
+      },
+      {
+        name: 'B', qty: '1', hours: '', labourMinutes: '',
+        rows: [
+          { color: '#7A4EAB', name: ' pla blue ', spoolPrice: '20', spoolWeight: '1000', gramsUsed: '25' },
+          { color: '#4A4E57', name: 'PETG Grey', spoolPrice: '25', spoolWeight: '1000', gramsUsed: '10.5' }
+        ]
+      }
+    ],
+    postage: { service: 'none', price: '0', packaging: '' }
+  };
+  const sb = makeSandbox(JSON.stringify(v3));
+  runScripts(sb);
+  assert.strictEqual(sb.byId['filament-usage'].hidden, false);
+  // 'PLA Blue' merges with ' pla blue ' (2×50 + 25 = 125 g); PETG Grey 10.5 g.
+  const items = sb.byId['filament-usage-list'].children;
+  assert.strictEqual(items.length, 2);
+  assert.strictEqual(items[0].children[1].textContent, 'PLA Blue');
+  assert.strictEqual(items[0].children[2].textContent, '125\u00a0g');
+  assert.strictEqual(items[0].children[0].style.backgroundColor, '#2274A5');
+  assert.strictEqual(items[1].children[1].textContent, 'PETG Grey');
+  assert.strictEqual(items[1].children[2].textContent, '10.5\u00a0g');
+  assert.strictEqual(sb.byId['filament-usage-total'].textContent, '135.5\u00a0g');
+});
+
+test('runtime: filament usage section stays hidden when nothing is used', () => {
+  const sb = makeSandbox();
+  runScripts(sb);
+  assert.strictEqual(sb.byId['filament-usage'].hidden, true);
+  assert.strictEqual(sb.byId['filament-usage-list'].children.length, 0);
 });
 
 /* ---------- Library: reusable parts and filament presets ---------- */

@@ -136,6 +136,42 @@
     };
   }
 
+  // Grams of filament used across all prints (row grams × print qty),
+  // merged case-insensitively by trimmed name; unnamed rows merge into one
+  // '' entry. Display name and colour come from the first row seen for each
+  // name (first non-empty colour wins). NaN/negative grams count as 0.
+  // Returns { total, filaments: [{ name, color, grams }] } in first-seen order.
+  function filamentUsage(prints) {
+    if (!Array.isArray(prints)) prints = [];
+    var byKey = Object.create(null);
+    var filaments = [];
+    var total = 0;
+    for (var i = 0; i < prints.length; i++) {
+      var p = prints[i];
+      if (!p || typeof p !== 'object' || !Array.isArray(p.rows)) continue;
+      var q = toQty(p.qty);
+      for (var j = 0; j < p.rows.length; j++) {
+        var row = p.rows[j];
+        if (!row || typeof row !== 'object') continue;
+        var name = typeof row.name === 'string' ? row.name.trim() : '';
+        var key = name.toLowerCase();
+        var entry = byKey[key];
+        if (!entry) {
+          entry = { name: name, color: null, grams: 0 };
+          byKey[key] = entry;
+          filaments.push(entry);
+        }
+        if (!entry.color && typeof row.color === 'string' && row.color !== '') {
+          entry.color = row.color;
+        }
+        var grams = nonNeg(row.gramsUsed) * q;
+        entry.grams += grams;
+        total += grams;
+      }
+    }
+    return { total: total, filaments: filaments };
+  }
+
   var Calc = {
     rowCost: rowCost,
     materialCost: materialCost,
@@ -145,7 +181,8 @@
     labourCost: labourCost,
     printUnitCost: printUnitCost,
     printSubtotal: printSubtotal,
-    orderTotals: orderTotals
+    orderTotals: orderTotals,
+    filamentUsage: filamentUsage
   };
 
   if (typeof module !== 'undefined' && module.exports) {

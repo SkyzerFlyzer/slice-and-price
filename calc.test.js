@@ -310,3 +310,71 @@ test('orderTotals qty multiplies materials, electricity and labour but not reven
   assert.ok(Math.abs(t.revenue - 25) < 1e-9);
   assert.ok(Math.abs(t.profit - 4.5) < 1e-9);      // 25 - 20.5
 });
+
+test('filamentUsage merges rows with the same name across prints and multiplies by qty', () => {
+  const prints = [
+    { qty: 2, rows: [{ color: '#111111', name: 'PLA Black', gramsUsed: '50' }] },   // 100
+    { qty: 1, rows: [
+      { color: '#222222', name: 'PLA Black', gramsUsed: 25 },
+      { color: '#333333', name: 'PETG Red', gramsUsed: 10 }
+    ] }
+  ];
+  const u = Calc.filamentUsage(prints);
+  assert.strictEqual(u.total, 135);
+  assert.deepStrictEqual(u.filaments, [
+    { name: 'PLA Black', color: '#111111', grams: 125 },
+    { name: 'PETG Red', color: '#333333', grams: 10 }
+  ]);
+});
+
+test('filamentUsage merges names case-insensitively and trimmed, keeping the first-seen spelling', () => {
+  const prints = [
+    { qty: 1, rows: [{ name: 'PLA Black', gramsUsed: 10 }] },
+    { qty: 1, rows: [{ name: '  pla black ', gramsUsed: 5 }] }
+  ];
+  const u = Calc.filamentUsage(prints);
+  assert.strictEqual(u.filaments.length, 1);
+  assert.strictEqual(u.filaments[0].name, 'PLA Black');
+  assert.strictEqual(u.filaments[0].grams, 15);
+});
+
+test('filamentUsage merges unnamed rows into a single entry', () => {
+  const prints = [
+    { qty: 1, rows: [{ gramsUsed: 10 }, { name: '', gramsUsed: 5 }] },
+    { qty: 3, rows: [{ name: '   ', gramsUsed: 1 }] }
+  ];
+  const u = Calc.filamentUsage(prints);
+  assert.strictEqual(u.filaments.length, 1);
+  assert.strictEqual(u.filaments[0].name, '');
+  assert.strictEqual(u.filaments[0].grams, 18);
+  assert.strictEqual(u.total, 18);
+});
+
+test('filamentUsage takes the first non-empty colour for a name', () => {
+  const prints = [
+    { qty: 1, rows: [{ name: 'PLA', gramsUsed: 1 }] },
+    { qty: 1, rows: [{ color: '#2274A5', name: 'pla', gramsUsed: 2 }] }
+  ];
+  assert.strictEqual(Calc.filamentUsage(prints).filaments[0].color, '#2274A5');
+});
+
+test('filamentUsage guards bad inputs to 0 grams', () => {
+  assert.deepStrictEqual(Calc.filamentUsage(null), { total: 0, filaments: [] });
+  assert.deepStrictEqual(Calc.filamentUsage([null, {}, { qty: 1 }]), { total: 0, filaments: [] });
+  const u = Calc.filamentUsage([
+    { qty: 1, rows: [
+      { name: 'PLA', gramsUsed: '' },
+      { name: 'PLA', gramsUsed: 'abc' },
+      { name: 'PLA', gramsUsed: -5 },
+      null
+    ] }
+  ]);
+  assert.strictEqual(u.total, 0);
+  assert.deepStrictEqual(u.filaments, [{ name: 'PLA', color: null, grams: 0 }]);
+});
+
+test('filamentUsage does not collide with Object prototype property names', () => {
+  const u = Calc.filamentUsage([{ qty: 1, rows: [{ name: 'constructor', gramsUsed: 7 }] }]);
+  assert.strictEqual(u.total, 7);
+  assert.strictEqual(u.filaments[0].name, 'constructor');
+});
